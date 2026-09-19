@@ -1,0 +1,80 @@
+name: Hash2curve upstream candidate QA
+on:
+  push:
+    branches: ['validation/hash2curve-upstream']
+permissions:
+  contents: read
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BC_TEST_DATA_HOME: ${{ github.workspace }}/bc-test-data
+      JAVA_TOOL_OPTIONS: '-XX:ActiveProcessorCount=2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 3d56837c3fe6c4a30fc7639b806958649e143210
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: bcgit/bc-test-data
+          ref: 1a7cce46e916c7ad296024c7d2a450810702b636
+          path: bc-test-data
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Test and style the exact minimal candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          git rev-parse HEAD | tee evidence/source.txt
+          test "$(cat evidence/source.txt)" = 3d56837c3fe6c4a30fc7639b806958649e143210
+          java -version 2>&1 | tee evidence/java.txt
+          cat > "$RUNNER_TEMP/resource-limits.gradle" <<'EOF'
+          gradle.projectsEvaluated {
+              allprojects {
+                  tasks.withType(Test).configureEach {
+                      minHeapSize = '256m'
+                      maxHeapSize = '4096m'
+                      maxParallelForks = 1
+                  }
+              }
+          }
+          EOF
+          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g -I "$RUNNER_TEMP/resource-limits.gradle" :core:checkstyleMain :core:cleanTest :core:test --tests org.bouncycastle.crypto.hash2curve.test.AllTests 2>&1 | tee evidence/candidate.log
+          echo 0 > evidence/exit-code.txt
+      - name: Require all actual cases and clean style
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          paths = list(Path('core/build/test-results').rglob('TEST-*.xml'))
+          cases = [c for p in paths for c in ET.parse(p).getroot().iter('testcase')]
+          assert len(cases) == 181, len(cases)
+          assert not any(c.find(x) is not None for c in cases for x in ('failure','error','skipped'))
+          required = {'testInitializationUsesSingleModularExponentiation', 'testConstantsMatchDirectPowersForSmallFields', 'testConstantsMatchDirectPowersForLargeFields', 'testRepeatedRatiosOverSmallFields'}
+          seen = {c.get('name') for c in cases if c.get('classname','').endswith('.GenericSqrtRatioConstantsTest')}
+          assert required <= seen
+          style = Path('core/build/reports/checkstyle/main.xml')
+          assert style.is_file()
+          errors = list(ET.parse(style).getroot().iter('error'))
+          assert not errors, len(errors)
+          assert Path('evidence/exit-code.txt').read_text().strip() == '0'
+          assert 'BUILD SUCCESSFUL' in Path('evidence/candidate.log').read_text()
+          Path('evidence/summary.json').write_text(json.dumps({'source':Path('evidence/source.txt').read_text().strip(),'hash_to_curve_cases':len(cases),'failures':0,'skipped':0,'checkstyle_findings':len(errors),'scope':'Focused suite and complete core main-source style, not full repository tests'},indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-candidate-qa-${{ github.run_id }}
+          path: |
+            evidence/
+            core/build/test-results/
+            core/build/reports/checkstyle/
+          if-no-files-found: error
