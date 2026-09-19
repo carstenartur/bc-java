@@ -62,8 +62,10 @@ public class GenericSqrtRatioCalculator implements SqrtRatioCalculator
         this.c3 = this.c2.subtract(BigInteger.ONE).divide(BigInteger.valueOf(2));
         this.c4 = BigInteger.valueOf(2).pow(this.c1).subtract(BigInteger.ONE);
         this.c5 = BigInteger.valueOf(2).pow(this.c1 - 1);
-        this.c6 = z.modPow(this.c2, this.q);
-        this.c7 = z.modPow(this.c2.add(BigInteger.ONE).divide(BigInteger.valueOf(2)), q);
+        // c2 = 2*c3 + 1: share z^c3 between the two constants (RFC 9380, F.2.1.1).
+        BigInteger zToC3 = z.modPow(this.c3, this.q);
+        this.c7 = zToC3.multiply(z).mod(this.q);
+        this.c6 = zToC3.multiply(this.c7).mod(this.q);
     }
 
     private int calculateC1()
