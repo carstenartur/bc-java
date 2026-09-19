@@ -1,0 +1,5 @@
+/target/
+/lib/
+/evidence/
+/src/main/java/org/bouncycastle/crypto/hash2curve/impl/LegacyGenericSqrtRatioCalculator.java
+__pycache__/

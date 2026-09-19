@@ -11,10 +11,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: hash2curve-constants-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   focused:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       BC_TEST_DATA_HOME: ${{ github.workspace }}/bc-test-data
       JAVA_TOOL_OPTIONS: '-XX:ActiveProcessorCount=2'
@@ -31,14 +35,22 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - name: Hash-to-curve suite (including constant and operation-count tests)
+      - name: Check benchmark report validator
+        run: python3 -m unittest discover -s research/hash2curve-constants -p 'test_*.py' -v
+      - name: Hash-to-curve suite including constant and RFC vector tests
         shell: bash
         run: |
           set -o pipefail
           mkdir -p evidence
           git rev-parse HEAD | tee evidence/source.txt
           java -version 2>&1 | tee evidence/java.txt
-          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g :core:test --tests org.bouncycastle.crypto.hash2curve.test.AllTests 2>&1 | tee evidence/focused.log
+          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g -I research/hash2curve-constants/ci.gradle :core:test --tests org.bouncycastle.crypto.hash2curve.test.AllTests 2>&1 | tee evidence/focused.log
+      - name: Verify actual test execution
+        if: always()
+        run: |
+          mkdir -p evidence
+          python3 research/hash2curve-constants/report_tests.py . > evidence/tests.json
+          cat evidence/tests.json
       - name: Preserve actual test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,4 +60,86 @@ jobs:
             evidence/
             core/build/test-results/
             core/build/reports/tests/
+          if-no-files-found: error
+
+  full-tests:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BC_TEST_DATA_HOME: ${{ github.workspace }}/bc-test-data
+      JAVA_TOOL_OPTIONS: '-XX:ActiveProcessorCount=2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: bcgit/bc-test-data
+          path: bc-test-data
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Repository test task and core style check
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p evidence
+          git rev-parse HEAD | tee evidence/source.txt
+          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g -I research/hash2curve-constants/ci.gradle test :core:checkstyleMain 2>&1 | tee evidence/full-tests.log
+      - name: Summarize test results without hiding failures
+        if: always()
+        run: |
+          mkdir -p evidence
+          python3 research/hash2curve-constants/report_tests.py . > evidence/tests.json
+          cat evidence/tests.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hash2curve-full-tests-${{ github.run_id }}
+          path: |
+            evidence/
+            **/build/test-results/
+            **/build/reports/checkstyle/
+          if-no-files-found: error
+
+  benchmark:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['21', '25']
+    env:
+      JAVA_TOOL_OPTIONS: '-XX:ActiveProcessorCount=2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Compile actual current core and prepare exact baseline
+        run: |
+          git fetch --no-tags --depth=1 origin ab16374d37c7e18c4090eb8838ebbd72a92593f2
+          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g :core:classes
+          python3 research/hash2curve-constants/prepare.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - name: Frozen JMH comparison
+        run: bash research/hash2curve-constants/run.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hash2curve-jmh-java${{ matrix.java }}-${{ github.run_id }}
+          path: |
+            research/hash2curve-constants/evidence/
+            research/hash2curve-constants/target/benchmarks.jar
+            research/hash2curve-constants/lib/bc-core.jar
           if-no-files-found: error

@@ -1,0 +1,10 @@
+// Research runner resource limits only; no test filters or test exclusions.
+gradle.projectsEvaluated {
+    allprojects {
+        tasks.withType(Test).configureEach {
+            minHeapSize = '256m'
+            maxHeapSize = '4096m'
+            maxParallelForks = 1
+        }
+    }
+}
