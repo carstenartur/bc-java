@@ -42,14 +42,19 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p evidence
+          rm -f evidence/exit-code.txt
           git rev-parse HEAD | tee evidence/source.txt
           java -version 2>&1 | tee evidence/java.txt
-          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g -I research/hash2curve-constants/ci.gradle :core:test --tests org.bouncycastle.crypto.hash2curve.test.AllTests 2>&1 | tee evidence/focused.log
-      - name: Verify actual test execution
+          set +e
+          ./gradlew --no-daemon --console=plain --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g -I research/hash2curve-constants/ci.gradle :core:test --tests org.bouncycastle.crypto.hash2curve.test.AllTests 2>&1 | tee evidence/focused.log
+          status=$?
+          printf '%s\n' "$status" > evidence/exit-code.txt
+          exit "$status"
+      - name: Verify actual test execution and build completion
         if: always()
         run: |
           mkdir -p evidence
-          python3 research/hash2curve-constants/report_tests.py . > evidence/tests.json
+          python3 research/hash2curve-constants/report_tests.py . --build-log evidence/focused.log --exit-code evidence/exit-code.txt > evidence/tests.json
           cat evidence/tests.json
       - name: Preserve actual test evidence
         if: always()
@@ -65,7 +70,9 @@ jobs:
   full-tests:
     needs: focused
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The first run completed core but hit the old 45-minute job limit during pg.
+    # Keep the complete root test task; do not drop or filter slow suites.
+    timeout-minutes: 180
     env:
       BC_TEST_DATA_HOME: ${{ github.workspace }}/bc-test-data
       JAVA_TOOL_OPTIONS: '-XX:ActiveProcessorCount=2'
@@ -87,13 +94,18 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p evidence
+          rm -f evidence/exit-code.txt
           git rev-parse HEAD | tee evidence/source.txt
-          ./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g -I research/hash2curve-constants/ci.gradle test :core:checkstyleMain 2>&1 | tee evidence/full-tests.log
-      - name: Summarize test results without hiding failures
+          set +e
+          ./gradlew --no-daemon --console=plain --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g -I research/hash2curve-constants/ci.gradle test :core:checkstyleMain 2>&1 | tee evidence/full-tests.log
+          status=$?
+          printf '%s\n' "$status" > evidence/exit-code.txt
+          exit "$status"
+      - name: Summarize test results without hiding failures or incomplete builds
         if: always()
         run: |
           mkdir -p evidence
-          python3 research/hash2curve-constants/report_tests.py . > evidence/tests.json
+          python3 research/hash2curve-constants/report_tests.py . --build-log evidence/full-tests.log --exit-code evidence/exit-code.txt > evidence/tests.json
           cat evidence/tests.json
       - uses: actions/upload-artifact@v4
         if: always()
