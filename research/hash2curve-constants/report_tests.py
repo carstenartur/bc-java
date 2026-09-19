@@ -13,7 +13,8 @@ for path in paths:
     suite = ET.parse(path).getroot()
     cases = list(suite.iter('testcase'))
     for case in cases:
-        if case.get('classname', '').endswith('.GenericSqrtRatioConstantsTest'):
+        if (case.get('classname', '').endswith('.GenericSqrtRatioConstantsTest')
+                and case.find('skipped') is None):
             new_tests.add(case.get('name'))
     suites.append({'file': str(path), 'tests': len(cases),
                    'failures': [c.get('classname', '') + '.' + c.get('name', '') for c in cases
