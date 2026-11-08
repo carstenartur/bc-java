@@ -6,6 +6,7 @@ import junit.framework.TestCase;
 import org.bouncycastle.crypto.bls.BLS12_381G1;
 import org.bouncycastle.crypto.hash2curve.HashToCurveProfile;
 import org.bouncycastle.crypto.hash2curve.HashToEllipticCurve;
+import org.bouncycastle.crypto.hash2curve.impl.BLS12_381G1MapToCurve;
 import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.util.Strings;
 
@@ -77,6 +78,22 @@ public class BLS12_381G1HashToCurveTest
         assertTrue("generator must be a valid curve point", generator.isValid());
         assertEquals("generator order must equal r",
             BLS12_381G1.ORDER.bitLength(), 255);
+    }
+
+    public void testJ91MapToCurve()
+    {
+        // RFC 9380, J.9.1: u[0] and Q0 for the empty message.
+        BigInteger u = new BigInteger(
+            "0ba14bd907ad64a016293ee7c2d276b8eae71f25a4b941eece7b0d89f17f75cb3ae5438a614fb61d6835ad59f29c564f", 16);
+        BigInteger expectedX = new BigInteger(
+            "11a3cce7e1d90975990066b2f2643b9540fa40d6137780df4e753a8054d07580db3b7f1f03396333d4a359d1fe3766fe", 16);
+        BigInteger expectedY = new BigInteger(
+            "0eeaf6d794e479e270da10fdaf768db4c96b650a74518fc67b04b03927754bac66f3ac720404f339ecdcc028afa091b7", 16);
+
+        BLS12_381G1MapToCurve map = new BLS12_381G1MapToCurve(BLS12_381G1.createCurve());
+        ECPoint p = map.process(u).normalize();
+        assertEquals(expectedX, p.getAffineXCoord().toBigInteger());
+        assertEquals(expectedY, p.getAffineYCoord().toBigInteger());
     }
 
     private static String abbreviate(String msg)

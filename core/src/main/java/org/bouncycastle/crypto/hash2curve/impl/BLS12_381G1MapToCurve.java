@@ -132,9 +132,25 @@ public class BLS12_381G1MapToCurve
         BigInteger yNum = horner(K3, K3.length - 1, xPrime);
         BigInteger yDen = horner(K4, K4.length - 1, xPrime).add(power(xPrime, K4.length)).mod(p);
 
-        BigInteger x = xNum.multiply(xDen.modInverse(p)).mod(p);
+        BigInteger xDenInv;
+        BigInteger yDenInv = null;
+        if (curveE.getClass() == ECCurve.Fp.class && p.getClass() == BigInteger.class
+            && BLS12_381G1.Q.equals(p) && u.getClass() == BigInteger.class
+            && xDen.signum() != 0 && yDen.signum() != 0)
+        {
+            // In the standard prime field, recover both inverses from the inverse of the product.
+            BigInteger productInv = xDen.multiply(yDen).modInverse(p);
+            xDenInv = yDen.multiply(productInv).mod(p);
+            yDenInv = xDen.multiply(productInv).mod(p);
+        }
+        else
+        {
+            xDenInv = xDen.modInverse(p);
+        }
+
+        BigInteger x = xNum.multiply(xDenInv).mod(p);
         BigInteger y = yPrime.multiply(yNum).mod(p)
-            .multiply(yDen.modInverse(p)).mod(p);
+            .multiply(yDenInv == null ? yDen.modInverse(p) : yDenInv).mod(p);
 
         return curveE.createPoint(x, y);
     }
