@@ -172,7 +172,7 @@ public class BLS12_381G2HashToCurve
         {
             BigInteger c0 = H2cUtils.os2ip(Arrays.copyOfRange(uniformBytes, (2 * i) * L, (2 * i + 1) * L)).mod(Fp2Element.P);
             BigInteger c1 = H2cUtils.os2ip(Arrays.copyOfRange(uniformBytes, (2 * i + 1) * L, (2 * i + 2) * L)).mod(Fp2Element.P);
-            u[i] = Fp2Element.of(c0, c1);
+            u[i] = Fp2Element.ofReduced(c0, c1);
         }
         return u;
     }
