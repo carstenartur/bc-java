@@ -133,6 +133,18 @@ public class BLS12_381SubgroupCheck
             p.y().frobenius().mul(PSI_Y));
     }
 
+    /** Conjugating Z keeps the endomorphism in Jacobian coordinates. */
+    static Fp2Element[] psiG2Jacobian(Fp2Element[] p)
+    {
+        if (p[2].isZero())
+        {
+            return p;
+        }
+        return new Fp2Element[]{
+            p[0].frobenius().mul(PSI_X), p[1].frobenius().mul(PSI_Y), p[2].frobenius()
+        };
+    }
+
     /**
      * Test G1 prime-order subgroup membership.
      * <p>

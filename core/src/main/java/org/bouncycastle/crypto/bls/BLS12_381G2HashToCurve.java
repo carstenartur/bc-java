@@ -23,8 +23,8 @@ import org.bouncycastle.util.Arrays;
  *       A' = 240*I, B' = 1012*(1+I), Z = -(2+I)).</li>
  *   <li>The results are mapped to E by the iso_3 rational map (RFC 9380
  *       App. E.3).</li>
- *   <li>The two G2 points are added, and the cofactor is cleared by
- *       scalar-multiplication by h_eff.</li>
+ *   <li>The two G2 points are added and the cofactor is cleared in Jacobian
+ *       coordinates. The result is then returned in affine form.</li>
  * </ol>
  */
 public class BLS12_381G2HashToCurve
@@ -134,10 +134,10 @@ public class BLS12_381G2HashToCurve
     public BLS12_381G2Point hashToCurve(byte[] message)
     {
         Fp2Element[] u = hashToField(message);
-        BLS12_381G2Point q0 = mapToCurveAndIso3(u[0]);
-        BLS12_381G2Point q1 = mapToCurveAndIso3(u[1]);
-        BLS12_381G2Point r = q0.add(q1);
-        return clearCofactor(r);
+        Fp2Element[] q0 = mapToCurveAndIso3Jacobian(u[0]);
+        Fp2Element[] q1 = mapToCurveAndIso3Jacobian(u[1]);
+        Fp2Element[] r = BLS12_381G2Point.jacobianAdd(q0, q1);
+        return BLS12_381G2Point.fromJacobian(clearCofactorJacobian(r));
     }
 
     /**
@@ -150,13 +150,20 @@ public class BLS12_381G2HashToCurve
      */
     static BLS12_381G2Point clearCofactor(BLS12_381G2Point p)
     {
-        BLS12_381G2Point t1 = p.multiply(X);
-        BLS12_381G2Point t2 = BLS12_381SubgroupCheck.psiG2(p);
-        BLS12_381G2Point t3 = BLS12_381SubgroupCheck.psiG2(BLS12_381SubgroupCheck.psiG2(p.doublePoint()));
-        t3 = t3.add(t2.negate());
-        t2 = t1.add(t2).multiply(X);
-        t3 = t3.add(t2).add(t1.negate());
-        return t3.add(p.negate());
+        return BLS12_381G2Point.fromJacobian(clearCofactorJacobian(BLS12_381G2Point.toJacobian(p)));
+    }
+
+    private static Fp2Element[] clearCofactorJacobian(Fp2Element[] p)
+    {
+        Fp2Element[] t1 = BLS12_381G2Point.jacobianMultiply(p, X);
+        Fp2Element[] t2 = BLS12_381SubgroupCheck.psiG2Jacobian(p);
+        Fp2Element[] twice = BLS12_381G2Point.jacobianDouble(p);
+        Fp2Element[] t3 = BLS12_381SubgroupCheck.psiG2Jacobian(BLS12_381SubgroupCheck.psiG2Jacobian(twice));
+        t3 = BLS12_381G2Point.jacobianAdd(t3, BLS12_381G2Point.jacobianNegate(t2));
+        t2 = BLS12_381G2Point.jacobianMultiply(BLS12_381G2Point.jacobianAdd(t1, t2), X);
+        t3 = BLS12_381G2Point.jacobianAdd(t3, t2);
+        t3 = BLS12_381G2Point.jacobianAdd(t3, BLS12_381G2Point.jacobianNegate(t1));
+        return BLS12_381G2Point.jacobianAdd(t3, BLS12_381G2Point.jacobianNegate(p));
     }
 
     /**
@@ -184,6 +191,11 @@ public class BLS12_381G2HashToCurve
      * generally not in the prime-order subgroup.
      */
     BLS12_381G2Point mapToCurveAndIso3(Fp2Element u)
+    {
+        return BLS12_381G2Point.fromJacobian(mapToCurveAndIso3Jacobian(u));
+    }
+
+    private Fp2Element[] mapToCurveAndIso3Jacobian(Fp2Element u)
     {
         // Simplified SWU on E' (RFC 9380 sec. F.2 / 6.6.3).
         Fp2Element tv1 = Z.mul(u.square());
@@ -220,23 +232,31 @@ public class BLS12_381G2HashToCurve
             yPrime = yPrime.neg();
         }
 
-        // iso_3 evaluation (RFC 9380 App. E.3), with one inversion for both denominators.
-        boolean mathIso3UseFactor = mathIso3Reduced(xPrime) && mathIso3Reduced(yPrime);
+        return iso3Jacobian(xPrime, yPrime);
+    }
+
+    private static Fp2Element[] iso3Jacobian(Fp2Element xPrime, Fp2Element yPrime)
+    {
         Fp2Element xNum = horner(K1, xPrime);
-        Fp2Element mathIso3XFactor = mathIso3UseFactor
-            ? xPrime.add(MATH_ISO3_OFFSET)
-            : horner(K2, xPrime).add(xPrime.square());
         Fp2Element yNum = horner(K3, xPrime);
-        Fp2Element yDen = mathIso3UseFactor ? null : horner(K4, xPrime).add(xPrime.square().mul(xPrime));
+        if (mathIso3Reduced(xPrime) && mathIso3Reduced(yPrime))
+        {
+            // RFC 9380 App. E.3: x_den = d^2, y_den = d^3. Use d as Jacobian Z.
+            Fp2Element d = xPrime.add(MATH_ISO3_OFFSET);
+            if (d.isZero())
+            {
+                throw new ArithmeticException("Fp2Element zero is not invertible");
+            }
+            return new Fp2Element[]{ xNum, yPrime.mul(yNum), d };
+        }
 
-        Fp2Element mathIso3Inverse = (mathIso3UseFactor ? mathIso3XFactor : mathIso3XFactor.mul(yDen)).inverse();
-        Fp2Element mathIso3InverseSquared = mathIso3UseFactor ? mathIso3Inverse.square() : null;
-        Fp2Element x = mathIso3UseFactor ? xNum.mul(mathIso3InverseSquared) : xNum.mul(mathIso3Inverse).mul(yDen);
-        Fp2Element y = mathIso3UseFactor
-            ? yPrime.mul(yNum).mul(mathIso3InverseSquared.mul(mathIso3Inverse))
-            : yPrime.mul(yNum).mul(mathIso3Inverse).mul(mathIso3XFactor);
-
-        return BLS12_381G2Point.ofUnchecked(x, y);
+        // Preserve the original evaluation for unchecked Fp2 components.
+        Fp2Element xDen = horner(K2, xPrime).add(xPrime.square());
+        Fp2Element yDen = horner(K4, xPrime).add(xPrime.square().mul(xPrime));
+        Fp2Element inv = xDen.mul(yDen).inverse();
+        Fp2Element x = xNum.mul(inv).mul(yDen);
+        Fp2Element y = yPrime.mul(yNum).mul(inv).mul(xDen);
+        return new Fp2Element[]{ x, y, Fp2Element.ONE };
     }
 
     private static final Fp2Element MATH_ISO3_OFFSET = Fp2Element.of(6L, -6L);

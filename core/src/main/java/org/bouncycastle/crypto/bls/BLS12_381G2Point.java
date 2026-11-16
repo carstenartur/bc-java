@@ -325,12 +325,89 @@ public final class BLS12_381G2Point
     /** The point at infinity in Jacobian coordinates (any point with Z = 0). */
     private static final Fp2Element[] JACOBIAN_INFINITY = { Fp2Element.ONE, Fp2Element.ONE, Fp2Element.ZERO };
 
+    static Fp2Element[] toJacobian(BLS12_381G2Point p)
+    {
+        return p.infinity ? JACOBIAN_INFINITY : new Fp2Element[]{ p.x, p.y, Fp2Element.ONE };
+    }
+
+    static Fp2Element[] jacobianNegate(Fp2Element[] p)
+    {
+        return new Fp2Element[]{ p[0], p[1].neg(), p[2] };
+    }
+
+    /**
+     * Variable-time Jacobian multiplication for public scalars, without
+     * normalization of the input or result.
+     */
+    static Fp2Element[] jacobianMultiply(Fp2Element[] p, BigInteger scalar)
+    {
+        int sign = scalar.signum();
+        if (sign == 0 || p[2].isZero())
+        {
+            return JACOBIAN_INFINITY;
+        }
+
+        BigInteger magnitude = scalar.abs();
+        Fp2Element[] r = p;
+        for (int i = magnitude.bitLength() - 2; i >= 0; --i)
+        {
+            r = jacobianDouble(r);
+            if (magnitude.testBit(i))
+            {
+                r = jacobianAdd(r, p);
+            }
+        }
+        return sign < 0 ? jacobianNegate(r) : r;
+    }
+
+    /**
+     * Jacobian addition (add-2007-bl, Explicit-Formulas Database): 11M + 5S.
+     * Handles infinity, doubling and inverse points.
+     */
+    static Fp2Element[] jacobianAdd(Fp2Element[] p, Fp2Element[] q)
+    {
+        Fp2Element x1 = p[0], y1 = p[1], z1 = p[2];
+        Fp2Element x2 = q[0], y2 = q[1], z2 = q[2];
+        if (z1.isZero())
+        {
+            return q;
+        }
+        if (z2.isZero())
+        {
+            return p;
+        }
+
+        Fp2Element z1z1 = z1.square();
+        Fp2Element z2z2 = z2.square();
+        Fp2Element u1 = x1.mul(z2z2);
+        Fp2Element u2 = x2.mul(z1z1);
+        Fp2Element s1 = y1.mul(z2).mul(z2z2);
+        Fp2Element s2 = y2.mul(z1).mul(z1z1);
+        Fp2Element h = u2.sub(u1);
+        Fp2Element sy = s2.sub(s1);
+        if (h.isZero())
+        {
+            return sy.isZero() ? jacobianDouble(p) : JACOBIAN_INFINITY;
+        }
+
+        Fp2Element h2 = h.add(h);
+        Fp2Element i = h2.square();
+        Fp2Element j = h.mul(i);
+        Fp2Element r = sy.add(sy);
+        Fp2Element v = u1.mul(i);
+        Fp2Element x3 = r.square().sub(j).sub(v.add(v));
+        Fp2Element s1j = s1.mul(j);
+        Fp2Element y3 = r.mul(v.sub(x3)).sub(s1j.add(s1j));
+        Fp2Element z3 = z1.add(z2).square().sub(z1z1).sub(z2z2).mul(h);
+        return new Fp2Element[]{ x3, y3, z3 };
+    }
+
     /**
      * Jacobian doubling for a = 0 (dbl-2009-l, Explicit-Formulas Database):
      * 2M + 5S. Z = 0 (infinity) and Y = 0 (order 2) both give Z3 = 0, so
      * neither needs a branch.
      */
-    private static Fp2Element[] jacobianDouble(Fp2Element[] p)
+    static Fp2Element[] jacobianDouble(Fp2Element[] p)
     {
         Fp2Element x1 = p[0], y1 = p[1], z1 = p[2];
         Fp2Element a = x1.square();
@@ -386,7 +463,7 @@ public final class BLS12_381G2Point
     }
 
     /** Converts Jacobian {@code (X, Y, Z)} to the affine point {@code (X/Z^2, Y/Z^3)}. */
-    private static BLS12_381G2Point fromJacobian(Fp2Element[] p)
+    static BLS12_381G2Point fromJacobian(Fp2Element[] p)
     {
         if (p[2].isZero())
         {
