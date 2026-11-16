@@ -120,6 +120,17 @@ public class BLS12_381G1MapToCurve
         this.sswuOnEPrime = new SimplifiedShallueVanDeWoestijneMapToCurve(curveEPrime, Z);
     }
 
+    // Common factor of the two coordinate denominators, checked modulo mathDenominatorModulus.
+    private static final java.math.BigInteger mathDenominatorModulus = new java.math.BigInteger("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", 16);
+    private static final java.math.BigInteger[] mathDenominatorCoefficients = {
+        new java.math.BigInteger("133341fb0962a34cb0504a9c4fada0a5090d38679b4c040d5d1c3afb023a3409fcc0815fea66d8b02bbef9c8b5a66e07", 16),
+        new java.math.BigInteger("264908af037bcede00d054cf5d4775e83eb6cf63c76b969f8ed174fb59fcff78d201f46f6cfc4ed6552e59ce75177b0", 16),
+        new java.math.BigInteger("1335c502c1f54c49aceea65e87fd7203ba0f626f305fc0cfd606a5dae9f3c8e81a4b3b69600129fabd307c69bf319d39", 16),
+        new java.math.BigInteger("94440f65f408a6e930e16e3e92dd17bf60d6e9679a8d3d58593de55ac23703042d609537eb3549aac234d896ca82944", 16),
+        new java.math.BigInteger("4afe09d5cf4956a23b6b71f59d2b3407b415a774b7be81bbb6fa99cbc798e0ac98ba725a5bc328016b1c268b4766e85", 16),
+        java.math.BigInteger.ONE
+    };
+
     public ECPoint process(BigInteger u)
     {
         ECPoint pointOnEPrime = sswuOnEPrime.process(u);
@@ -128,6 +139,22 @@ public class BLS12_381G1MapToCurve
         BigInteger yPrime = normalised.getAffineYCoord().toBigInteger();
 
         BigInteger xNum = horner(K1, K1.length - 1, xPrime);
+        if (p != null && p.getClass() == java.math.BigInteger.class && p.equals(mathDenominatorModulus)
+            && xPrime != null && xPrime.getClass() == java.math.BigInteger.class && xPrime.bitLength() <= 381
+            && yPrime != null && yPrime.getClass() == java.math.BigInteger.class && mathDenominatorCoefficients != null
+            && K2 != null && K4 != null)
+        {
+            BigInteger yNum = horner(K3, K3.length - 1, xPrime);
+            java.math.BigInteger mathDenominatorInverse = horner(mathDenominatorCoefficients, mathDenominatorCoefficients.length - 1, xPrime).modInverse(p);
+            java.math.BigInteger mathDenominatorInverseSquared = mathDenominatorInverse.multiply(mathDenominatorInverse).mod(p);
+            java.math.BigInteger mathDenominatorInverseCubed = mathDenominatorInverseSquared.multiply(mathDenominatorInverse).mod(p);
+            BigInteger x = xNum.multiply(mathDenominatorInverseSquared).mod(p);
+            BigInteger y = yPrime.multiply(yNum).mod(p)
+            .multiply(mathDenominatorInverseCubed).mod(p);
+            return curveE.createPoint(x, y);
+        }
+
+        // Mathematics fallback: unchanged original Java behavior.
         BigInteger xDen = horner(K2, K2.length - 1, xPrime).add(power(xPrime, K2.length)).mod(p);
         BigInteger yNum = horner(K3, K3.length - 1, xPrime);
         BigInteger yDen = horner(K4, K4.length - 1, xPrime).add(power(xPrime, K4.length)).mod(p);

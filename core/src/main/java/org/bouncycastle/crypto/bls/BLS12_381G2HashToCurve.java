@@ -221,16 +221,37 @@ public class BLS12_381G2HashToCurve
         }
 
         // iso_3 evaluation (RFC 9380 App. E.3), with one inversion for both denominators.
+        boolean mathIso3UseFactor = mathIso3Reduced(xPrime) && mathIso3Reduced(yPrime);
         Fp2Element xNum = horner(K1, xPrime);
-        Fp2Element xDen = horner(K2, xPrime).add(xPrime.square());
+        Fp2Element mathIso3XFactor = mathIso3UseFactor
+            ? xPrime.add(MATH_ISO3_OFFSET)
+            : horner(K2, xPrime).add(xPrime.square());
         Fp2Element yNum = horner(K3, xPrime);
-        Fp2Element yDen = horner(K4, xPrime).add(xPrime.square().mul(xPrime));
+        Fp2Element yDen = mathIso3UseFactor ? null : horner(K4, xPrime).add(xPrime.square().mul(xPrime));
 
-        Fp2Element denProdInv = xDen.mul(yDen).inverse();
-        Fp2Element x = xNum.mul(denProdInv).mul(yDen);
-        Fp2Element y = yPrime.mul(yNum).mul(denProdInv).mul(xDen);
+        Fp2Element mathIso3Inverse = (mathIso3UseFactor ? mathIso3XFactor : mathIso3XFactor.mul(yDen)).inverse();
+        Fp2Element mathIso3InverseSquared = mathIso3UseFactor ? mathIso3Inverse.square() : null;
+        Fp2Element x = mathIso3UseFactor ? xNum.mul(mathIso3InverseSquared) : xNum.mul(mathIso3Inverse).mul(yDen);
+        Fp2Element y = mathIso3UseFactor
+            ? yPrime.mul(yNum).mul(mathIso3InverseSquared.mul(mathIso3Inverse))
+            : yPrime.mul(yNum).mul(mathIso3Inverse).mul(mathIso3XFactor);
 
         return BLS12_381G2Point.ofUnchecked(x, y);
+    }
+
+    private static final Fp2Element MATH_ISO3_OFFSET = Fp2Element.of(6L, -6L);
+
+    private static boolean mathIso3Reduced(Fp2Element value)
+    {
+        if (value == null)
+        {
+            return false;
+        }
+        BigInteger real = value.c0(), imaginary = value.c1();
+        return real != null && imaginary != null
+            && real.getClass() == BigInteger.class && imaginary.getClass() == BigInteger.class
+            && real.signum() >= 0 && imaginary.signum() >= 0
+            && real.compareTo(Fp2Element.P) < 0 && imaginary.compareTo(Fp2Element.P) < 0;
     }
 
     /**
