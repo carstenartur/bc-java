@@ -108,13 +108,35 @@ public class XmdMessageExpansion implements MessageExpansion
         final byte[][] b = new byte[ell + 1][this.hashOutputBytes];
         b[0] = this.hash(msgPrime);
         b[1] = this.hash(Arrays.concatenate(b[0], H2cUtils.i2osp(1, 1), dstPrime));
-        byte[] uniformBytes = Arrays.clone(b[1]);
+        final byte[] firstBlock = b[1];
+        final byte[] uniformBytes = new byte[java.lang.Math.max(0, lenInBytes)];
+        int prefixLength = -1;
+        if (firstBlock != null)
+        {
+            prefixLength = firstBlock.length;
+            java.lang.System.arraycopy(firstBlock, 0, uniformBytes, 0, java.lang.Math.min(prefixLength, uniformBytes.length));
+        }
         for (int i = 2; i <= ell; i++)
         {
             b[i] = this.hash(Arrays.concatenate(H2cUtils.xor(b[0], b[i - 1]), H2cUtils.i2osp(i, 1), dstPrime));
-            uniformBytes = Arrays.concatenate(uniformBytes, b[i]);
+            final byte[] nextBlock = b[i];
+            if (nextBlock != null)
+            {
+                final int previousLength = java.lang.Math.max(0, prefixLength);
+                prefixLength = previousLength + nextBlock.length;
+                if (prefixLength < 0)
+                {
+                    // The growing concatenation would throw on this negative array length.
+                    return new byte[prefixLength];
+                }
+                if (previousLength < uniformBytes.length)
+                {
+                    java.lang.System.arraycopy(nextBlock, 0, uniformBytes, previousLength,
+                        java.lang.Math.min(nextBlock.length, uniformBytes.length - previousLength));
+                }
+            }
         }
-        return Arrays.copyOfRange(uniformBytes, 0, lenInBytes);
+        return lenInBytes < 0 || prefixLength < 0 ? Arrays.copyOfRange((byte[]) null, 0, lenInBytes) : uniformBytes;
     }
 
     /**
