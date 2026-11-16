@@ -109,6 +109,7 @@ public class BLS12_381G1MapToCurve
     };
 
     private final ECCurve curveE;
+    private final boolean mathCachedGuard0;
     private final BigInteger p;
     private final SimplifiedShallueVanDeWoestijneMapToCurve sswuOnEPrime;
 
@@ -116,6 +117,8 @@ public class BLS12_381G1MapToCurve
     {
         this.curveE = curveE;
         this.p = curveE.getField().getCharacteristic();
+        this.mathCachedGuard0 = this.p != null && this.p.getClass() == java.math.BigInteger.class
+            && BLS12_381G1MapToCurve.mathDenominatorModulus != null && this.p.equals(BLS12_381G1MapToCurve.mathDenominatorModulus);
         ECCurve curveEPrime = new ECCurve.Fp(p, A_PRIME, B_PRIME, BLS12_381G1.ORDER, BLS12_381G1.COFACTOR);
         this.sswuOnEPrime = new SimplifiedShallueVanDeWoestijneMapToCurve(curveEPrime, Z);
     }
@@ -139,7 +142,7 @@ public class BLS12_381G1MapToCurve
         BigInteger yPrime = normalised.getAffineYCoord().toBigInteger();
 
         BigInteger xNum = horner(K1, K1.length - 1, xPrime);
-        if (p != null && p.getClass() == java.math.BigInteger.class && p.equals(mathDenominatorModulus)
+        if ((this.mathCachedGuard0 ? this.p != null && BLS12_381G1MapToCurve.mathDenominatorModulus != null : (p != null && p.getClass() == java.math.BigInteger.class && p.equals(mathDenominatorModulus)))
             && xPrime != null && xPrime.getClass() == java.math.BigInteger.class && xPrime.bitLength() <= 381
             && yPrime != null && yPrime.getClass() == java.math.BigInteger.class && mathDenominatorCoefficients != null
             && K2 != null && K4 != null)
