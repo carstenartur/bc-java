@@ -64,8 +64,11 @@ public class PointwiseProductTest
                         {
                             zeta = (short)-zeta;
                         }
-                        expected.getCoeffs()[j] += Ntt.mulMont(a0, b0) + Ntt.mulMont(zeta, Ntt.mulMont(a1, b1));
-                        expected.getCoeffs()[j + 1] += Ntt.mulMont(a0, b1) + Ntt.mulMont(a1, b0);
+                        // Preserve the original per-row narrowing to short explicitly.
+                        expected.setCoeffIndex(j, (short)(expected.getCoeffIndex(j)
+                            + Ntt.mulMont(a0, b0) + Ntt.mulMont(zeta, Ntt.mulMont(a1, b1))));
+                        expected.setCoeffIndex(j + 1, (short)(expected.getCoeffIndex(j + 1)
+                            + Ntt.mulMont(a0, b1) + Ntt.mulMont(a1, b0)));
                     }
                 }
                 short[][] originalA = new short[k][], originalB = new short[k][];
