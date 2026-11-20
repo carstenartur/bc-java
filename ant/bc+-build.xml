@@ -332,6 +332,7 @@
                  <include name="org/bouncycastle/pqc/asn1/**/*.java" />
                  <exclude name="org/bouncycastle/pqc/**/*Tests.java" />
                  <exclude name="org/bouncycastle/pqc/**/AllTests*.java" />
+                 <exclude name="org/bouncycastle/crypto/kems/mlkem/PointwiseProductTest.java" />
                  <exclude name="org/bouncycastle/crypto/params/*Tests.java" />
                  <exclude name="org/bouncycastle/crypto/signers/lms/*Tests.java" />
                  <exclude name="org/bouncycastle/crypto/signers/xmss/*Tests.java" />
@@ -538,6 +539,7 @@
                  <exclude name="org/bouncycastle/pqc/**/*Tests.java" />
                  <exclude name="org/bouncycastle/pqc/**/*Test.java" />
                  <exclude name="org/bouncycastle/pqc/**/AllTests*.java" />
+                 <exclude name="org/bouncycastle/crypto/kems/mlkem/PointwiseProductTest.java" />
                  <exclude name="org/bouncycastle/crypto/params/*Tests.java" />
                  <exclude name="org/bouncycastle/crypto/signers/lms/*Tests.java" />
                  <exclude name="org/bouncycastle/crypto/signers/xmss/*Tests.java" />
@@ -1065,6 +1067,7 @@
         <delete file="${test.target.src.dir}/org/bouncycastle/est/AllTests.java" />
         <delete file="${test.target.src.dir}/org/bouncycastle/gpg/keybox/AllTests.java" />
         <delete file="${test.target.src.dir}/org/bouncycastle/crypto/agreement/owl/AllTests.java" />
+        <delete file="${test.target.src.dir}/org/bouncycastle/crypto/kems/mlkem/AllTests.java" />
         <delete file="${test.target.src.dir}/org/bouncycastle/x509/CertPathReviewerMessages_de.properties" />
         <delete file="${test.target.src.dir}/org/bouncycastle/x509/CertPathReviewerMessages.properties" />
 
