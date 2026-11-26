@@ -1,0 +1,73 @@
+// Optional, focused tasks; the repository's normal build configuration is unchanged.
+// Usage: ./gradlew -I scripts/bls-g2-sqrt/benchmark.gradle :core:blsSqrtCheck :core:blsSqrtBenchmarkClasses
+gradle.projectsEvaluated {
+    def core = gradle.rootProject.project(':core')
+    def mainOutput = core.sourceSets.main.output
+    def benchmarkRoot = new File(gradle.rootProject.projectDir, 'scripts/bls-g2-sqrt')
+
+    core.tasks.register('compileBlsSqrtStrictMain', JavaCompile) {
+        dependsOn core.tasks.named('compileJava')
+        source core.file('src/main/java/org/bouncycastle/crypto/bls/BLS12_381G2HashToCurve.java')
+        classpath = core.sourceSets.main.compileClasspath + mainOutput
+        destinationDirectory = core.layout.buildDirectory.dir('bls-sqrt/strict-main')
+        javaCompiler = core.javaToolchains.compilerFor {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+        // The normal compileJava task above checks the Java 8 API floor. Current
+        // JDKs warn that --release 8 itself is obsolete; use 11 for this additional
+        // all-warnings-as-errors diagnostics pass without disabling any lint category.
+        options.release = 11
+        options.annotationProcessorPath = core.configurations.annotationProcessor
+        options.compilerArgs.addAll(['-Xlint:all', '-Werror', '-implicit:none', '-XDaddTypeAnnotationsToSymbol=true'])
+        options.errorprone.enabled = true
+    }
+
+    core.tasks.register('compileBlsSqrtStrictTest', JavaCompile) {
+        dependsOn core.tasks.named('compileJava')
+        source core.file('src/test/java/org/bouncycastle/crypto/bls/BLS12_381G2HashToCurveTest.java')
+        classpath = core.sourceSets.test.compileClasspath
+        destinationDirectory = core.layout.buildDirectory.dir('bls-sqrt/strict-test')
+        javaCompiler = core.javaToolchains.compilerFor {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+        options.release = 11
+        options.annotationProcessorPath = core.configurations.annotationProcessor
+        options.compilerArgs.addAll(['-Xlint:all', '-Werror', '-implicit:none', '-XDaddTypeAnnotationsToSymbol=true'])
+        // The root build disables Error Prone for test tasks. This explicit opt-in
+        // makes the touched test source obey the same gate as the touched main source.
+        options.errorprone.enabled = true
+    }
+
+    core.tasks.register('blsSqrtCheck', JavaExec) {
+        dependsOn core.tasks.named('compileBlsSqrtStrictMain'), core.tasks.named('compileBlsSqrtStrictTest')
+        classpath = core.files(core.layout.buildDirectory.dir('bls-sqrt/strict-main'),
+            core.layout.buildDirectory.dir('bls-sqrt/strict-test')) + core.sourceSets.test.runtimeClasspath
+        mainClass = 'junit.textui.TestRunner'
+        args 'org.bouncycastle.crypto.bls.BLS12_381G2HashToCurveTest'
+        maxHeapSize = '512m'
+    }
+
+    core.tasks.register('blsSqrtBenchmarkClasses', JavaCompile) {
+        dependsOn core.tasks.named('compileJava')
+        source new File(benchmarkRoot, 'src')
+        classpath = core.sourceSets.main.compileClasspath + mainOutput
+        options.annotationProcessorPath = core.configurations.annotationProcessor
+        destinationDirectory = core.layout.buildDirectory.dir('bls-sqrt/benchmark')
+        javaCompiler = core.javaToolchains.compilerFor {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+        options.release = 11
+        options.compilerArgs.addAll(['-Xlint:all', '-Werror', '-implicit:none', '-XDaddTypeAnnotationsToSymbol=true'])
+        options.errorprone.enabled = true
+    }
+
+    core.tasks.register('blsSqrtBenchmarkClasspath') {
+        dependsOn core.tasks.named('blsSqrtBenchmarkClasses')
+        def outputFile = core.layout.buildDirectory.file('bls-sqrt/classpath.txt')
+        outputs.file(outputFile)
+        doLast {
+            outputFile.get().asFile.text = (core.files(core.layout.buildDirectory.dir('bls-sqrt/benchmark'))
+                + core.sourceSets.main.runtimeClasspath).filter { it.exists() }.asPath + '\n'
+        }
+    }
+}
